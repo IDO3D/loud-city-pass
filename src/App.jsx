@@ -55,12 +55,13 @@ const ACHIEVEMENTS = [
 ];
 
 // ═══════════════ PERSISTENCE ═══════════════
-const DB_KEY="lc_v6", SESS_KEY="lc_s6";
+const DB_KEY="lc_v6", SESS_KEY="lc_s6", SYNC_CHANNEL="lc_sync";
 const Store = {
   load:()=>{try{const r=localStorage.getItem(DB_KEY);return r?JSON.parse(r):null}catch{return null}},
   save:(d)=>{try{localStorage.setItem(DB_KEY,JSON.stringify(d))}catch{}},
   loadSess:()=>{try{const r=localStorage.getItem(SESS_KEY);return r?JSON.parse(r):null}catch{return null}},
   saveSess:(s)=>{try{localStorage.setItem(SESS_KEY,JSON.stringify(s))}catch{}},
+  sync:(event)=>{try{localStorage.setItem(SYNC_CHANNEL,JSON.stringify({...event,ts:now()}))}catch{}},
 };
 
 const uid=(p="")=>{const b=new Uint8Array(8);crypto.getRandomValues(b);return p+Array.from(b,x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()};
@@ -338,6 +339,20 @@ textarea.inp{resize:none;line-height:1.55}
 
 /* ── QR ── */
 .qr-wrap{background:white;border-radius:18px;padding:14px;display:inline-flex;align-items:center;justify-content:center}
+
+/* ── LEADERBOARD ── */
+.lb-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);transition:all 0.2s}
+.lb-item.top1{background:linear-gradient(135deg,rgba(253,185,39,0.15),rgba(253,185,39,0.05));border-color:rgba(253,185,39,0.4)}
+.lb-item.top2{background:linear-gradient(135deg,rgba(192,192,192,0.1),rgba(192,192,192,0.03));border-color:rgba(192,192,192,0.3)}
+.lb-item.top3{background:linear-gradient(135deg,rgba(205,127,50,0.1),rgba(205,127,50,0.03));border-color:rgba(205,127,50,0.3)}
+.lb-rank{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:900;font-size:14px;flex-shrink:0}
+.lb-item.top1 .lb-rank{background:#FDB927;color:#1a0a00}
+.lb-item.top2 .lb-rank{background:#c0c0c0;color:#1a1a1a}
+.lb-item.top3 .lb-rank{background:#cd7f32;color:#1a1a1a}
+.lb-info{flex:1}
+.lb-name{font-size:13px;font-weight:700;color:#F0EDE6}
+.lb-stat{font-size:10px;color:"rgba(240,237,230,0.5)"}
+.lb-badge{font-size:20px;font-weight:900}
 
 /* ── MISC ── */
 .fld{display:flex;flex-direction:column;width:100%;gap:7px}
@@ -646,19 +661,23 @@ function ProfileDashboard(){
 
   const showT=(msg,color=C.cream)=>{setToastMsg({msg,color});setTimeout(()=>setToastMsg(null),2800)};
 
-  // Simulate a stamp for demo
-  const simStamp=()=>{
-    const avail=Object.keys(STATIONS).filter(id=>!stamps[id]);
-    if(!avail.length){showT("All stamps collected! 🏆",C.gold);return}
-    const sid=avail[Math.floor(Math.random()*avail.length)];
-    const db={...state.db,profiles:{...state.db.profiles}};
-    const newStamps={...stamps,[sid]:now()};
-    db.profiles[profile.id]={...db.profiles[profile.id],stamps:newStamps};
-    db.metrics={...db.metrics,stamps:(db.metrics.stamps||0)+1};
-    dispatch({t:"DB",db});
-    showT(`⚡ ${STATIONS[sid].full} — Stamped!`,C.gold);
-    if(Object.keys(newStamps).length>=TOTAL)setTimeout(()=>setCelebrate(true),500);
-  };
+  // Real-time sync listener for staff-awarded stamps
+  useEffect(()=>{
+    const handleSync = (e) => {
+      try{
+        const data = JSON.parse(localStorage.getItem(SYNC_CHANNEL));
+        if(data?.event === "stamp_awarded" && data?.pid === profile?.id){
+          showT(`📲 Staff awarded stamp: ${data.stationName}!`,C.ok);
+          // Refetch profile to update UI
+          setTimeout(()=>dispatch({t:"DB",db:state.db}),300);
+        } else if(data?.event === "redeemed" && data?.pid === profile?.id){
+          showT("🏆 Your prize has been redeemed!",C.gold);
+        }
+      }catch{}
+    };
+    window.addEventListener("storage",handleSync);
+    return ()=>window.removeEventListener("storage",handleSync);
+  },[profile?.id,dispatch]);
 
   if(!profile)return<div className="page"><div className="col g16" style={{paddingTop:80,alignItems:"center",textAlign:"center"}}><div style={{fontSize:48}}>👤</div><div className="ant" style={{fontSize:32}}>No Profile</div><div style={{fontSize:13,color:"rgba(240,237,230,0.45)"}}>Register to create your fan profile.</div><button className="btn btn-bl" onClick={()=>go("register")}>Register Now →</button></div></div>;
 
@@ -735,8 +754,8 @@ function ProfileDashboard(){
         <button className={`tab${tab==="card"?" on":""}`} onClick={()=>setTab("card")}>Card</button>
         <button className={`tab${tab==="customize"?" on":""}`} onClick={()=>setTab("customize")}>Edit</button>
         <button className={`tab${tab==="stamps"?" on":""}`} onClick={()=>setTab("stamps")}>Stamps</button>
+        <button className={`tab${tab==="leaderboard"?" on":""}`} onClick={()=>setTab("leaderboard")}>🏆</button>
         <button className={`tab${tab==="achievements"?" on":""}`} onClick={()=>setTab("achievements")}>Badges</button>
-        <button className={`tab${tab==="activity"?" on":""}`} onClick={()=>setTab("activity")}>History</button>
       </div>
 
       {/* ── TAB: CARD ── */}
@@ -869,12 +888,43 @@ function ProfileDashboard(){
               );
             })}
           </div>
-          {/* Demo sim button */}
-          {stampCount<TOTAL&&(
-            <button className="btn btn-bl btn-full" style={{fontSize:14}} onClick={simStamp}>
-              ⚡ Simulate Station Tap (Demo)
-            </button>
-          )}
+          {/* Staff-awarded stamps info */}
+          <div className="row g8" style={{background:"linear-gradient(135deg,rgba(0,122,193,0.1),rgba(34,212,106,0.08))",border:"1px solid rgba(34,212,106,0.3)",borderRadius:14,padding:12,alignItems:"flex-start"}}>
+            <span style={{fontSize:18,flexShrink:0}}>📍</span>
+            <div style={{fontSize:12,color:"rgba(240,237,230,0.7)",lineHeight:1.5}}>Tap QR codes at event stations or have staff scan your QR to earn stamps. {stampCount>=TOTAL&&<span style={{fontWeight:700,color:C.gold}}>Your card is complete! Return to claim prize.</span>}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: LEADERBOARD ── */}
+      {tab==="leaderboard"&&(
+        <div className="col g14 w100 au">
+          <div className="lbl">🏆 Competitive Leaderboard</div>
+          <div className="col g8 w100">
+            {Object.values(state.db.profiles).sort((a,b)=>(Object.keys(b.stamps||{}).length)-(Object.keys(a.stamps||{}).length)).slice(0,10).map((p,i)=>{
+              const pStamps = Object.keys(p.stamps||{}).length;
+              const pRank = getFanRank(pStamps);
+              const isCurrentUser = p.id === profile?.id;
+              return(
+                <div key={p.id} className={`lb-item${isCurrentUser?" ai":""} ${i===0?"top1":i===1?"top2":i===2?"top3":""}`} style={{opacity:isCurrentUser?1:0.75}}>
+                  <div className="lb-rank">{i+1}</div>
+                  <div className="lb-info">
+                    <div className="lb-name">{p.name}{isCurrentUser&&" ⭐"}</div>
+                    <div className="lb-stat">{pRank.title}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:16,fontWeight:900,color:pStamps===TOTAL?C.gold:pRank.color}}>{pStamps}</div>
+                    <div style={{fontSize:9,color:"rgba(240,237,230,0.4)"}}>stamps</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{background:"rgba(0,122,193,0.1)",border:"1px solid rgba(0,122,193,0.3)",borderRadius:12,padding:12,marginTop:8}}>
+            <div style={{fontSize:12,color:"rgba(240,237,230,0.7)",lineHeight:1.5}}>
+              📊 <strong>Your Rank:</strong> You're {Object.values(state.db.profiles).filter(p=>Object.keys(p.stamps||{}).length > stampCount).length + 1} out of {Object.values(state.db.profiles).filter(p=>p.type==="adult").length} fans. Keep collecting stamps to climb the leaderboard!
+            </div>
+          </div>
         </div>
       )}
 
@@ -1017,9 +1067,12 @@ function StaffTerminal(){
       const newStamps = {...info.stamps,[sid]:now()};
       db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
       db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
+      db.stampEvents = (db.stampEvents||[]).concat({pid:info.id,sid,ts:now(),staffAward:true});
       dispatch({t:"DB",db});
       setInfo({...info,stamps:newStamps});
-      dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
+      // Sync across tabs/windows for real-time updates
+      Store.sync({event:"stamp_awarded",pid:info.id,sid,stationName:STATIONS[sid].full});
+      dispatch({t:"TOAST",v:{msg:`✓ ${STATIONS[sid].name} — ${info.name} stamped!`,color:C.ok}});
     }catch(e){
       dispatch({t:"TOAST",v:{msg:"Stamp error",color:C.fail}});
     }
@@ -1035,7 +1088,8 @@ function StaffTerminal(){
       dispatch({t:"DB",db});
       setInfo({...info,redeemed:true});
       setRedeemMode(false);
-      dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
+      Store.sync({event:"redeemed",pid:info.id,fanName:info.name});
+      dispatch({t:"TOAST",v:{msg:"🏆 Prize redeemed!",color:C.ok}});
     }catch(e){
       dispatch({t:"TOAST",v:{msg:"Redeem error",color:C.fail}});
     }
