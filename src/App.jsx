@@ -400,11 +400,14 @@ function Confetti(){const p=Array.from({length:30},(_,i)=>({id:i,color:[C.orange
 function StampGrid({stamps={}}){return<div className="sgrid">{Object.values(STATIONS).map((st,i)=>{const on=!!stamps[st.id];return(<div key={st.id} className={`stile${on?" on":""} au d${Math.min(i+1,8)}`}><span className="ico">{st.icon}</span><span className="nm">{st.name}</span>{on&&<div className="chk">✓</div>}</div>)})}</div>}
 
 function QRCode({value="",size=120}){
-  const N=21;const seed=value.split("").reduce((h,c,i)=>((h<<5)-h+c.charCodeAt(0)+i*7)|0,5381);
-  const finder=(r,c)=>{for(const[or,oc]of[[0,0],[0,14],[14,0]]){if(r>=or&&r<=or+6&&c>=oc&&c<=oc+6){const lr=r-or,lc=c-oc;if(lr===0||lr===6||lc===0||lc===6)return 1;if(lr>=2&&lr<=4&&lc>=2&&lc<=4)return 1;return 0}}if((r===6&&c>=8&&c<=12)||(c===6&&r>=8&&r<=12))return r%2===0||c%2===0?1:0;return null};
-  const cells=Array.from({length:N*N},(_,i)=>{const r=Math.floor(i/N),c=i%N;const f=finder(r,c);if(f!==null)return f;const s=(seed^(r*31+c*17)^(i*7))&0xFFFF;return((s*1664525+1013904223)&0xFFFF)>32767?1:0});
-  const cs=size/N;
-  return<div className="qr-wrap" style={{boxShadow:"0 16px 48px rgba(0,0,0,0.6)"}}><svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>{cells.map((v,i)=>v?<rect key={i} x={(i%N)*cs} y={Math.floor(i/N)*cs} width={cs-0.5} height={cs-0.5} rx="1.2" fill="#002D62"/>:null)}</svg></div>
+  const qrRef = useRef(null);
+  useEffect(()=>{
+    if(qrRef.current && window.QRCode){
+      qrRef.current.innerHTML = "";
+      new window.QRCode(qrRef.current,{text:value,width:size,height:size,colorDark:"#002D62",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.H});
+    }
+  },[value,size]);
+  return<div ref={qrRef} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:8,background:"white",borderRadius:12,boxShadow:"0 16px 48px rgba(0,0,0,0.6)"}}/>
 }
 
 // ═══════════════ QR MODAL (SNAPCHAT STYLE) ═══════════════
