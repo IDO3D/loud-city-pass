@@ -988,9 +988,19 @@ function StaffTerminal(){
   const lookup = () => {
     if(!token.trim()){setInfo({error:"Please enter an ID or token"});return;}
     try{
-      const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
+      const trimmed = token.trim();
+      const prof = Object.values(state.db.profiles).find(p=>p.id===trimmed||p.token===trimmed);
       if(!prof){setInfo({error:"Profile not found"});return;}
-      setInfo(prof);
+      
+      // Calculate rank for display
+      const stampCount = Object.keys(prof.stamps||{}).length;
+      const rank = FAN_TITLES.reduce((r,t,i)=>{
+        const levels = [0,1,2,3,4,5,6];
+        const thresholds = [0,1,3,6,9,12,15];
+        return stampCount >= thresholds[i] ? {idx:i,title:t,level:levels[i]} : r;
+      },{idx:0,title:"Loud City Rookie",level:0});
+      
+      setInfo({...prof,staffRank:rank});
       setRedeemMode(false);
     }catch(e){
       setInfo({error:"Lookup failed"});
@@ -1052,12 +1062,27 @@ function StaffTerminal(){
               const img = ctx.getImageData(0,0,canvas.width,canvas.height);
               if(window.jsQR){
                 const qr = window.jsQR(img.data,img.width,img.height);
-                if(qr && now() - lastScannedTime > 2000){
+                if(qr && qr.data && now() - lastScannedTime > 2000){
+                  const decodedId = qr.data.trim();
                   setQrDetected(true);
-                  setToken(qr.data);
+                  setToken(decodedId);
                   setLastScannedTime(now());
                   setTimeout(()=>setQrDetected(false),600);
-                  setTimeout(()=>lookup(),300);
+                  setTimeout(()=>{
+                    const prof = Object.values(state.db.profiles).find(p=>p.id===decodedId||p.token===decodedId);
+                    if(prof){
+                      const stampCount = Object.keys(prof.stamps||{}).length;
+                      const rank = FAN_TITLES.reduce((r,t,i)=>{
+                        const levels = [0,1,2,3,4,5,6];
+                        const thresholds = [0,1,3,6,9,12,15];
+                        return stampCount >= thresholds[i] ? {idx:i,title:t,level:levels[i]} : r;
+                      },{idx:0,title:"Loud City Rookie",level:0});
+                      setInfo({...prof,staffRank:rank});
+                      dispatch({t:"TOAST",v:{msg:"✓ Fan scanned",color:C.ok}});
+                    } else {
+                      setInfo({error:"Profile not found"});
+                    }
+                  },300);
                   setTimeout(()=>setScanning(false),800);
                 }
               }
@@ -1150,22 +1175,70 @@ function StaffTerminal(){
 
       {info && !info.error && (
         <div className="col g12 w100 au" style={{marginTop:20,borderRadius:18,background:"linear-gradient(135deg,rgba(0,122,193,0.15),rgba(253,185,39,0.08))",border:"1.5px solid rgba(253,185,39,0.35)",padding:16}}>
+          {/* Header with avatar and name */}
           <div className="row g12" style={{alignItems:"center"}}>
             <div style={{width:52,height:52,borderRadius:13,background:"linear-gradient(135deg,"+C.navy+","+C.blue+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
               {info.prefs?.avatar||"🏀"}
             </div>
             <div style={{flex:1}}>
               <div style={{fontSize:15,fontWeight:700,color:C.cream}}>{info.name}</div>
-              <div style={{fontSize:11,color:"rgba(240,237,230,0.5)"}}>ID: {info.id.slice(0,8)}</div>
+              <div style={{fontSize:11,color:"rgba(240,237,230,0.5)"}}>ID: {info.id.slice(0,12)}…</div>
             </div>
             <div style={{textAlign:"right"}}>
               <div style={{fontSize:24,fontWeight:900,color:stampCount===TOTAL?C.gold:C.cream}}>{stampCount}</div>
               <div style={{fontSize:9,color:"rgba(240,237,230,0.4)"}}>{TOTAL}</div>
             </div>
           </div>
+          
+          {/* Rank and Stats Grid */}
+          <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:10,marginTop:10}}>
+            <div className="row g12" style={{fontSize:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"rgba(240,237,230,0.4)",textTransform:"uppercase"}}>Rank</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.blue,marginTop:2}}>{info.staffRank?.title||"Rookie"}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"rgba(240,237,230,0.4)",textTransform:"uppercase"}}>Type</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.gold,marginTop:2}}>{info.type==="adult"?"Adult":"Kid"}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"rgba(240,237,230,0.4)",textTransform:"uppercase"}}>Badges</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.ok,marginTop:2}}>{state.db.profiles[info.id]?Object.keys(ACHIEVEMENTS).filter(a=>ACHIEVEMENTS.find(ac=>ac.id===a)?.earned).length:0}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
           <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.1)",borderRadius:20,overflow:"hidden",marginTop:12}}>
             <div style={{height:"100%",background:"linear-gradient(90deg,"+C.blue+","+C.gold+")",width:(stampCount/TOTAL)*100+"%",transition:"width 0.6s ease-out"}} />
           </div>
+
+          {/* Station Status */}
+          <div style={{marginTop:12,fontSize:11}}>
+            <div style={{color:"rgba(240,237,230,0.4)",fontWeight:700,marginBottom:6}}>STAMP STATUS</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+              {Object.entries(STATIONS).slice(0,6).map(([sid,s])=>(
+                <div key={sid} style={{background:info.stamps?.[sid]?"rgba(34,212,106,0.1)":"rgba(255,255,255,0.04)",border:"1px solid "+(info.stamps?.[sid]?"rgba(34,212,106,0.3)":"rgba(255,255,255,0.1)"),borderRadius:8,padding:8,textAlign:"center"}}>
+                  <div style={{fontSize:16}}>{s.icon}</div>
+                  <div style={{fontSize:8,color:"rgba(240,237,230,0.5)",marginTop:4}}>{s.name}</div>
+                  {info.stamps?.[sid] && <div style={{fontSize:7,color:C.ok,marginTop:2}}>✓</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Redeem Status */}
+          <div style={{marginTop:12,padding:10,borderRadius:10,background:info.redeemed?"rgba(34,212,106,0.1)":"rgba(255,255,255,0.04)",border:"1px solid "+(info.redeemed?"rgba(34,212,106,0.3)":"rgba(255,255,255,0.1)")}}>
+            <div className="row g8" style={{fontSize:12}}>
+              <span style={{fontSize:16}}>{info.redeemed?"✓":"⏳"}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700}}>{info.redeemed?"Prize Redeemed":"Ready to Redeem"}</div>
+                <div style={{fontSize:10,color:"rgba(240,237,230,0.5)",marginTop:1}}>{info.redeemed?new Date().toLocaleDateString():"All stamps completed"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
           <div className="row g10" style={{marginTop:10}}>
             {!redeemMode ? (
               <>
