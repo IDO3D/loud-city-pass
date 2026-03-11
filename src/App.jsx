@@ -259,7 +259,7 @@ const Store = {
   sync:(event)=>{try{localStorage.setItem(SYNC_CHANNEL,JSON.stringify({...event,ts:Date.now()}))}catch{}},
 };
 
-const uid=(p="")=>{const b=new Uint8Array(8);crypto.getRandomValues(b);return p+Array.from(b,x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()};
+const uid=(p="")=>{const b=new Uint8Array(8);if(typeof window!=="undefined"&&window.crypto){window.crypto.getRandomValues(b);}else if(typeof global!=="undefined"&&global.crypto){global.crypto.getRandomValues(b);}else{for(let i=0;i<8;i++)b[i]=Math.floor(Math.random()*256);}return p+Array.from(b,x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()};
 const mkTok=()=>{const b=new Uint8Array(8);crypto.getRandomValues(b);const h=Array.from(b,x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();return`${h.slice(0,4)}-${h.slice(4,8)}-${h.slice(8,12)}-${h.slice(12,16)}`};
 const mkOTP=()=>String(100000+Math.floor(Math.random()*900000));
 const now=()=>Date.now();
