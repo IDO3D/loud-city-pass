@@ -401,13 +401,38 @@ function StampGrid({stamps={}}){return<div className="sgrid">{Object.values(STAT
 
 function QRCode({value="",size=120}){
   const qrRef = useRef(null);
+  const [loaded,setLoaded] = useState(false);
+  
   useEffect(()=>{
-    if(qrRef.current && window.QRCode){
-      qrRef.current.innerHTML = "";
-      new window.QRCode(qrRef.current,{text:value,width:size,height:size,colorDark:"#002D62",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.H});
+    // Check if QRCode library is loaded
+    const checkLib = setInterval(()=>{
+      if(window.QRCode){
+        setLoaded(true);
+        clearInterval(checkLib);
+      }
+    },50);
+    return ()=>clearInterval(checkLib);
+  },[]);
+  
+  useEffect(()=>{
+    if(qrRef.current && loaded && window.QRCode && value){
+      try{
+        qrRef.current.innerHTML = "";
+        new window.QRCode(qrRef.current,{
+          text:value,
+          width:size,
+          height:size,
+          colorDark:"#002D62",
+          colorLight:"#ffffff",
+          correctLevel:window.QRCode.CorrectLevel.H
+        });
+      }catch(e){
+        console.warn("QR generation error:",e);
+      }
     }
-  },[value,size]);
-  return<div ref={qrRef} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:8,background:"white",borderRadius:12,boxShadow:"0 16px 48px rgba(0,0,0,0.6)"}}/>
+  },[value,size,loaded]);
+  
+  return <div ref={qrRef} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:8,background:"white",borderRadius:12,boxShadow:"0 16px 48px rgba(0,0,0,0.6)",minWidth:size+16,minHeight:size+16}}/>
 }
 
 // ═══════════════ QR MODAL (SNAPCHAT STYLE) ═══════════════
