@@ -1,11 +1,13 @@
 # ⚡ Loud City Pass — OKC Thunder Playoffs Fan System
 
+> **After making branding or feature changes, commit and push your work before running the deploy command.**
+
 A full-stack PWA for the OKC Thunder gameday NFC stamp experience.
 
 ## Features
 - **Fan App** — Registration, NFC card, stamp journey, live profile & customization
 - **Fan Profile Dashboard** — Player card, avatar/theme editor, achievements, activity timeline
-- **Staff Terminal** — QR/NFC scanner, card issuance, live event feed, analytics dashboard
+- **Staff Terminal** — live scanner (camera & NFC) with lookup, manual stamp/redeem tools + analytics dashboard
 - **Real QR Scanning** — jsQR camera-based decode
 - **Offline Resilient** — localStorage persistence + queue
 
@@ -93,6 +95,10 @@ VITE_FIREBASE_APP_ID=
 
 ---
 
+## Branding & Identity
+
+Feel free to swap out the placeholder SVGs (`/public/thunder-logo.svg`, `/public/thunder-bg.svg`) with the official OKC Thunder assets. The color tokens at the top of `src/App.jsx` (`const C = { … }`) match the Thunder palette and are used throughout the UI. Fonts are imported in the embedded CSS; replace the Google fonts with the team's proprietary typefaces or update the `@import` at the top of the CSS constant if you have custom font files.
+
 ## Project Structure
 
 ```
@@ -119,7 +125,7 @@ loud-city-pass/
 | Register | fan | 3-step OTP flow |
 | Issuance | fan | QR + countdown |
 | Profile | fan | **Full profile dashboard** |
-| Staff Terminal | staff | Scanner + dashboard |
+| Staff Terminal | staff | Camera QR scanner, Web‑NFC reader, manual lookup/stamp/redeem, analytics |
 
 ## Profile Dashboard Tabs
 

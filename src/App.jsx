@@ -146,7 +146,7 @@ input,button,select,textarea{font-family:inherit}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
 
 .shell{min-height:100dvh;position:relative;background:#040B17}
-.bg{position:fixed;inset:0;pointer-events:none;z-index:0}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:0;background:url('/thunder-bg.svg') center/cover no-repeat;}
 .bg::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(90deg,transparent,transparent 59px,rgba(255,255,255,0.011) 60px),repeating-linear-gradient(0deg,transparent,transparent 59px,rgba(255,255,255,0.006) 60px)}
 .bg::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,122,193,0.17) 0%,transparent 65%),radial-gradient(ellipse 50% 40% at 95% 90%,rgba(239,59,35,0.08) 0%,transparent 60%)}
 
@@ -972,12 +972,177 @@ function ProfileDashboard(){
 }
 
 // ═══════════════ MODE SELECT ═══════════════
+function StaffTerminal(){
+  const {state,dispatch} = useCtx();
+  const [token,setToken] = useState("");
+  const [info,setInfo] = useState(null);
+
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [scanning, setScanning] = useState(false);
+
+  const back = useCallback(()=>dispatch({t:"GO",s:"mode_select"}),[dispatch]);
+
+  const lookup = () => {
+    if(!token.trim()){setInfo({error:"Please enter an ID or token"});return;}
+    const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
+    if(!prof){setInfo({error:"Profile not found"});return;}
+    setInfo(prof);
+  };
+
+  const stamp = () => {
+    if(!info||info.error) return;
+    const avail = Object.keys(STATIONS).filter(id=>!info.stamps[id]);
+    if(!avail.length){dispatch({t:"TOAST",v:{msg:"All stamps collected! 🏆",color:C.gold}});return;}
+    const sid = avail[0];
+    const db = {...state.db,profiles:{...state.db.profiles}};
+    const newStamps = {...info.stamps,[sid]:now()};
+    db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
+    db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
+    dispatch({t:"DB",db});
+    setInfo({...info,stamps:newStamps});
+    dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
+  };
+
+  const redeem = () => {
+    if(!info||info.error) return;
+    if(info.redeemed){dispatch({t:"TOAST",v:{msg:"Already redeemed",color:C.fail}});return;}
+    const db = {...state.db,profiles:{...state.db.profiles}};
+    db.profiles[info.id] = {...db.profiles[info.id],redeemed:true};
+    db.metrics = {...db.metrics,redeems:(db.metrics.redeems||0)+1};
+    dispatch({t:"DB",db});
+    setInfo({...info,redeemed:true});
+    dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
+  };
+
+  // camera-based QR scanning
+  useEffect(()=>{
+    let stream;
+    let idx;
+    if(scanning){
+      const start = async () => {
+        try{
+          stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          idx = setInterval(()=>{
+            if(videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA){
+              const canvas = canvasRef.current;
+              const ctx = canvas.getContext('2d');
+              canvas.width = videoRef.current.videoWidth;
+              canvas.height = videoRef.current.videoHeight;
+              ctx.drawImage(videoRef.current,0,0,canvas.width,canvas.height);
+              const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+              const qr = window.jsQR ? window.jsQR(img.data,img.width,img.height) : null;
+              if(qr){
+                setToken(qr.data);
+                lookup();
+                setScanning(false);
+              }
+            }
+          },500);
+        }catch(e){dispatch({t:"TOAST",v:{msg:"Camera error",color:C.fail}});setScanning(false);}      
+      };
+      start();
+    }
+    return ()=>{
+      if(idx) clearInterval(idx);
+      if(stream){stream.getTracks().forEach(t=>t.stop());}
+    };
+  },[scanning]);
+
+  // NFC scanning stub
+  const scanNFC = async () => {
+    if('NDEFReader' in window){
+      try{
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        ndef.onreading = evt=>{
+          try{
+            const decoder = new TextDecoder();
+            const text = decoder.decode(evt.message.records[0].data);
+            setToken(text);
+            lookup();
+          }catch(e){console.warn(e);}        
+        };
+      }catch(err){dispatch({t:"TOAST",v:{msg:"NFC permission denied",color:C.warn}});}
+    } else {
+      dispatch({t:"TOAST",v:{msg:"NFC not supported",color:C.warn}});
+    }
+  };
+
+  return(
+    <div className="page" style={{paddingBottom:108}}>
+      <div className="tnav">
+        <div className="row g10">
+          <button className="btn btn-ic" onClick={back}>←</button>
+          <div><div className="wm">Staff Terminal</div><div style={{fontSize:9,color:"rgba(240,237,230,0.38)",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1.5,textTransform:"uppercase"}}>Loud City HQ</div></div>
+        </div>
+      </div>
+      <div className="col g14 w100" style={{marginTop:20}}>
+        <div className="lbl">Scanner / Lookup</div>
+        <input className="inp" value={token} onChange={e=>setToken(e.target.value)} placeholder="Fan ID or token"/>
+        <div className="row g10" style={{marginTop:10}}>
+          <button className="btn btn-bl" onClick={lookup}>Lookup</button>
+          <button className="btn btn-gd" onClick={stamp} disabled={!info||info.error}>Stamp</button>
+          <button className="btn btn-or" onClick={redeem} disabled={!info||info.error}>Redeem</button>
+        </div>
+        <div className="row g10" style={{marginTop:10}}>
+          <button className="btn btn-bl btn-sm" onClick={()=>setScanning(v=>!v)}>
+            {scanning?"Stop QR":"Scan QR"}
+          </button>
+          <button className="btn btn-bl btn-sm" onClick={scanNFC}>Scan NFC</button>
+        </div>
+        <div style={{position:'relative',width:0,height:0,overflow:'hidden'}}>
+          <video ref={videoRef} style={{width:'100%',height:'auto'}} />
+          <canvas ref={canvasRef} />
+        </div>
+        {info&&(
+          info.error?
+            <div className="alr alr-e" style={{marginTop:16}}>{info.error}</div>
+          :
+            <div style={{marginTop:20,fontSize:13}}>
+              <div><strong>Name:</strong> {info.name}</div>
+              <div><strong>Stamps:</strong> {Object.keys(info.stamps||{}).length}/{TOTAL}</div>
+              <div><strong>Redeemed:</strong> {info.redeemed?"Yes":"No"}</div>
+            </div>
+        )}
+        <div style={{marginTop:40}}>
+          <div className="lbl">Metrics</div>
+          <div style={{fontSize:13,marginTop:6}}>Registrations: {state.db.metrics.regs||0}</div>
+          <div style={{fontSize:13}}>Cards issued: {state.db.metrics.cards||0}</div>
+          <div style={{fontSize:13}}>Stamps: {state.db.metrics.stamps||0}</div>
+          <div style={{fontSize:13}}>Redeems: {state.db.metrics.redeems||0}</div>
+          <div style={{fontSize:13,marginTop:6}}>By station:</div>
+          <div style={{fontSize:12}}>{Object.entries(state.db.metrics.byStation||{}).map(([sid,ct])=>
+            <div key={sid}>{STATIONS[sid].name}: {ct}</div>
+          )}</div>
+        </div>
+        {state.db.liveEvents && state.db.liveEvents.length>0 && (
+          <div style={{marginTop:30}}>
+            <div className="lbl">Live Events</div>
+            {state.db.liveEvents.slice(0,5).map(evt=>(
+              <div key={evt.id} className="row g8" style={{fontSize:12,marginTop:4}}>
+                <span>{evt.type==="redeem"?"🏆":"⚡"}</span>
+                <span>{evt.name}{evt.sid?` – ${STATIONS[evt.sid].name}`:""} {evt.done?"(done)":""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════ MODE SELECT ═══════════════
 function ModeSelect(){
   const{dispatch}=useCtx();
   return(
     <div style={{position:"relative",zIndex:1,minHeight:"100dvh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px",maxWidth:430,margin:"0 auto"}}>
       <div className="col g14 w100 au" style={{alignItems:"center",textAlign:"center"}}>
-        <div style={{width:76,height:76,borderRadius:24,background:`linear-gradient(135deg,${C.navyDk},${C.navy})`,border:"1px solid rgba(0,90,180,0.4)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 20px 60px rgba(0,0,0,0.5)",marginBottom:4}}>⚡</div>
+        <div style={{width:76,height:76,borderRadius:24,background:`linear-gradient(135deg,${C.navyDk},${C.navy})`,border:"1px solid rgba(0,90,180,0.4)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",marginBottom:4}}>
+          <img src="/thunder-logo.svg" alt="Thunder" style={{width:48,height:48}}/>
+        </div>
         <div className="ant" style={{fontSize:52,lineHeight:0.9}}>LOUD<br/><span style={{WebkitTextStroke:`2px ${C.gold}`,WebkitTextFillColor:"transparent"}}>CITY</span><br/>PASS</div>
         <div style={{fontSize:13,color:"rgba(240,237,230,0.45)",lineHeight:1.6,maxWidth:280}}>OKC Thunder · Playoffs 2025<br/>Fan profiles · NFC stamps · Live rewards</div>
       </div>
@@ -986,8 +1151,8 @@ function ModeSelect(){
           <span style={{fontSize:28}}>🏀</span>
           <div className="col g2" style={{alignItems:"flex-start"}}><span>Fan Experience</span><span style={{fontSize:11,fontWeight:400,opacity:0.7,textTransform:"none",letterSpacing:0}}>Profile · Stamps · Achievements</span></div>
         </button>
-        <button className="btn btn-gh btn-full" style={{height:52,fontSize:15,gap:12}} onClick={()=>dispatch({t:"GO",s:"home"})}>
-          <span style={{fontSize:22}}>🔒</span> Staff Terminal (See v5 for full scanner)
+        <button className="btn btn-gh btn-full" style={{height:52,fontSize:15,gap:12}} onClick={()=>dispatch({t:"GO",s:"staff"})}>
+          <span style={{fontSize:22}}>🔒</span> Staff Terminal
         </button>
         <div style={{fontSize:10,color:"rgba(240,237,230,0.26)",textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1,textTransform:"uppercase",marginTop:4}}>Live profile customization · Fan rank system · Achievement badges</div>
       </div>
@@ -1017,6 +1182,7 @@ export default function App(){
 
   const FanScreen=FAN_SCREENS[state.screen];
   const isFan=!!FanScreen;
+  const isStaff = state.screen==="staff";
   const isMode=state.screen==="mode_select";
 
   return(
@@ -1024,6 +1190,7 @@ export default function App(){
       <div className="shell">
         <div className="bg"/>
         {isMode&&<ModeSelect/>}
+        {isStaff&&<StaffTerminal/>}
         {isFan&&(
           <>
             <FanScreen/>
