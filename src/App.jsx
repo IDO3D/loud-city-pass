@@ -511,13 +511,13 @@ function ProfileDashboard(){
 // ═══════════════ STAFF TERMINAL ═══════════════
 function StaffTerminal(){
   const {state,dispatch} = useCtx();
+  const {back} = useA();
   const [token,setToken] = useState("");
   const [info,setInfo] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [sessionStamps, setSessionStamps] = useState(0);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const back = useCallback(()=>dispatch({t:"GO",s:"mode_select"}),[dispatch]);
   const lookup = () => {
     if(!token.trim()){setInfo({error:"Enter ID"});return;}
     const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
@@ -596,9 +596,9 @@ function StaffTerminal(){
         <input className="inp" value={token} onChange={e=>setToken(e.target.value)} onKeyDown={e=>e.key==="Enter"&&lookup()} placeholder="Fan ID" style={{width:"100%"}}/>
       </div>
       {info&&!info.error&&<div style={{margin:"0 20px",padding:16,background:C.surface,borderRadius:14,border:"1px solid "+C.borderHi}}>
-        <div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.navy+","+C.blue+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{info.prefs?.avatar||"🏀"}</div><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{info.name}</div><div style={{fontSize:11,color:"rgba(240,237,230,0.5)"}}>ID: {info.id.slice(0,12)}…</div></div><div style={{textAlign:"right"}}><div style={{fontSize:20,fontWeight:900,color:stampCount===TOTAL?C.gold:C.cream}}>{stampCount}/{TOTAL}</div></div></div>
-        <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.1)",borderRadius:20,overflow:"hidden",marginTop:12}}><div style={{height:"100%",background:"linear-gradient(90deg,"+C.blue+","+C.gold+")",width:pct+"%",transition:"width 0.6s "+spring.smooth}}/></div>
-        <div style={{display:"flex",gap:8,marginTop:12}}><button className="btn btn-primary" style={{flex:1}} onClick={stamp} disabled={stampCount>=TOTAL}>Stamp</button><button className="btn btn-primary" style={{flex:1,background:C.gold,color:"#000"}} onClick={redeem} disabled={info.redeemed}>🏆</button></div>
+        <div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.navy+","+C.blue+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{info.prefs?.avatar||"🏀"}</div><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{info.name}</div><div style={{fontSize:11,color:"rgba(240,237,230,0.5)"}}>ID: {info.id.slice(0,12)}…</div></div><div style={{textAlign:"right"}}><div style={{fontSize:20,fontWeight:900,color:Object.keys(info.stamps).length===TOTAL?C.gold:C.cream}}>{Object.keys(info.stamps).length}/{TOTAL}</div></div></div>
+        <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.1)",borderRadius:20,overflow:"hidden",marginTop:12}}><div style={{height:"100%",background:"linear-gradient(90deg,"+C.blue+","+C.gold+")",width:((Object.keys(info.stamps).length/TOTAL)*100)+"%",transition:"width 0.6s "+spring.smooth}}/></div>
+        <div style={{display:"flex",gap:8,marginTop:12}}><button className="btn btn-primary" style={{flex:1}} onClick={stamp} disabled={Object.keys(info.stamps).length>=TOTAL}>Stamp</button><button className="btn btn-primary" style={{flex:1,background:C.gold,color:"#000"}} onClick={redeem} disabled={info.redeemed}>🏆</button></div>
       </div>}
     </div>
   );
