@@ -429,148 +429,31 @@ function QRModal({value="",onClose}){
 function ThemedCard({name="FAN",type="adult",token="",themeId="thunder",jersey="",avatar="⚡",anim=false,compact=false}){
   const theme=CARD_THEMES[themeId]||CARD_THEMES.thunder;
   const h=compact?160:192;
-  
-  // Premium card styling inspired by Amex, CashApp, Apple
   return(
-    <div className={`nfc-card${anim?" ac":""}`} style={{
-      height:h,
-      background:theme.bg,
-      maxWidth:compact?280:330,
-      position:"relative",
-      overflow:"hidden",
-      // Premium depth
-      boxShadow:"0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1)",
-      // Smooth edges
-      borderRadius:24,
-      // Subtle rim light
-      border:"1px solid rgba(255,255,255,0.12)",
-    }}>
-      {/* Gradient overlay for depth */}
-      <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(255,255,255,0.08) 0%,transparent 50%,rgba(0,0,0,0.1) 100%)",pointerEvents:"none",zIndex:1}}/>
-      
-      {/* Subtle stripe accent */}
-      <div style={{position:"absolute",top:0,right:0,bottom:0,width:4,background:theme.stripe,opacity:0.8,zIndex:2}}/>
-      
-      {/* Premium content */}
-      <div className="nfc-inner" style={{position:"relative",zIndex:3}}>
-        {/* Top section: Branding + Avatar */}
+    <div className={`nfc-card${anim?" ac":""}`} style={{height:h,background:theme.bg,maxWidth:compact?280:330}}>
+      <div style={{position:"absolute",top:0,right:0,bottom:0,width:5,background:theme.stripe}}/>
+      <div className="nfc-sheen"/>
+      {/* Large jersey number watermark */}
+      <div style={{position:"absolute",top:-10,left:14,fontFamily:"Anton,sans-serif",fontSize:compact?80:100,color:"rgba(255,255,255,0.05)",letterSpacing:-2,lineHeight:1,userSelect:"none",pointerEvents:"none"}}>#{jersey||"0"}</div>
+      <div className="nfc-inner">
         <div className="row" style={{justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div style={{flex:1}}>
-            {/* OKC THUNDER engraved text */}
-            <div style={{
-              fontFamily:"'Barlow Condensed',sans-serif",
-              fontSize:7,
-              fontWeight:900,
-              letterSpacing:4,
-              color:"rgba(240,237,230,0.35)",
-              marginBottom:6,
-              textTransform:"uppercase",
-              textShadow:"0 1px 2px rgba(0,0,0,0.3)",
-            }}>OKC THUNDER</div>
-            {/* Fan name engraved */}
-            <div style={{
-              fontFamily:"'Anton',sans-serif",
-              fontSize:compact?16:20,
-              color:"#F0EDE6",
-              textTransform:"uppercase",
-              letterSpacing:0.5,
-              lineHeight:1.1,
-              textShadow:"0 2px 4px rgba(0,0,0,0.4)",
-              wordBreak:"break-word",
-              fontWeight:900,
-            }}>{(name||"FAN").slice(0,22)}</div>
+          <div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:8,fontWeight:700,letterSpacing:3,color:"rgba(240,237,230,0.4)",marginBottom:5,textTransform:"uppercase"}}>Loud City HQ · Playoffs</div>
+            <div style={{fontFamily:"Anton,sans-serif",fontSize:compact?18:22,color:"white",textTransform:"uppercase",letterSpacing:0.5}}>{name}</div>
           </div>
-          {/* Avatar with premium glow */}
-          <div style={{
-            fontSize:compact?20:24,
-            filter:`drop-shadow(0 4px 12px ${theme.accent}44)`,
-            textShadow:"0 2px 4px rgba(0,0,0,0.3)",
-            flexShrink:0,
-            marginLeft:8,
-          }}>{avatar}</div>
+          <div style={{fontSize:compact?22:26,filter:`drop-shadow(0 4px 12px ${theme.accent}55)`}}>{avatar}</div>
         </div>
-
-        {/* Bottom section: Jersey, Token, NFC indicator */}
-        <div className="row" style={{justifyContent:"space-between",alignItems:"flex-end",marginTop:"auto"}}>
-          {/* Left: Jersey number engraved */}
-          <div style={{textAlign:"left"}}>
-            <div style={{
-              fontFamily:"'Barlow Condensed',sans-serif",
-              fontSize:7,
-              fontWeight:900,
-              letterSpacing:2,
-              color:"rgba(240,237,230,0.3)",
-              textTransform:"uppercase",
-              marginBottom:2,
-              textShadow:"0 1px 2px rgba(0,0,0,0.3)",
-            }}>Jersey</div>
-            <div style={{
-              fontFamily:"'Anton',sans-serif",
-              fontSize:compact?18:24,
-              color:theme.accent,
-              fontWeight:900,
-              textShadow:`0 2px 6px ${theme.accent}44`,
-              lineHeight:1,
-            }}>#{jersey||"0"}</div>
+        <div className="row" style={{justifyContent:"space-between",alignItems:"flex-end"}}>
+          <div>
+            <div style={{fontSize:8,color:"rgba(240,237,230,0.3)",letterSpacing:2,textTransform:"uppercase",marginBottom:3,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700}}>NFC Token</div>
+            <div className="mono" style={{fontSize:9,color:"rgba(240,237,230,0.45)"}}>{token||"••••-••••-••••-••••"}</div>
           </div>
-
-          {/* Center: NFC Token engraved small */}
-          <div style={{textAlign:"center",flex:1}}>
-            <div style={{
-              fontFamily:"'Barlow Condensed',sans-serif",
-              fontSize:6.5,
-              fontWeight:900,
-              letterSpacing:2,
-              color:"rgba(240,237,230,0.25)",
-              textTransform:"uppercase",
-              marginBottom:2,
-              textShadow:"0 1px 2px rgba(0,0,0,0.3)",
-            }}>NFC ID</div>
-            <div style={{
-              fontFamily:"monospace",
-              fontSize:compact?7:8,
-              color:"rgba(240,237,230,0.4)",
-              letterSpacing:0.5,
-              textShadow:"0 1px 2px rgba(0,0,0,0.3)",
-              wordBreak:"break-all",
-            }}>{(token||"••••-••••").slice(0,16)}</div>
-          </div>
-
-          {/* Right: NFC tap indicator with glow */}
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{
-              width:compact?28:36,
-              height:compact?28:36,
-              borderRadius:"50%",
-              background:`linear-gradient(135deg,${theme.accent}44,${theme.accent}22)`,
-              border:`2px solid ${theme.accent}66`,
-              display:"flex",
-              alignItems:"center",
-              justifyContent:"center",
-              fontSize:compact?14:18,
-              boxShadow:`0 0 12px ${theme.accent}33`,
-              textShadow:"0 1px 2px rgba(0,0,0,0.3)",
-              fontWeight:900,
-            }}>📡</div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:8,color:"rgba(240,237,230,0.3)",letterSpacing:2,textTransform:"uppercase",marginBottom:2,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700}}>Tap</div>
+            <div style={{fontSize:compact?17:20}}>📡</div>
           </div>
         </div>
       </div>
-
-      {/* Embossed watermark jersey number (very subtle) */}
-      <div style={{
-        position:"absolute",
-        top:compact?-8:-12,
-        left:12,
-        fontFamily:"'Anton',sans-serif",
-        fontSize:compact?60:80,
-        color:"rgba(255,255,255,0.04)",
-        letterSpacing:-2,
-        lineHeight:1,
-        userSelect:"none",
-        pointerEvents:"none",
-        fontWeight:900,
-        textShadow:"0 4px 12px rgba(0,0,0,0.4)",
-      }}>#{jersey||"0"}</div>
     </div>
   );
 }
@@ -903,13 +786,13 @@ function ProfileDashboard(){
           {/* Clickable QR Code (Snapchat style) */}
           <div className="row g10 s3" style={{padding:"14px 16px",cursor:"pointer",borderRadius:14,border:"1.5px solid rgba(0,122,193,0.3)",background:"rgba(0,122,193,0.08)",transition:"all 0.2s",hover:{background:"rgba(0,122,193,0.12)"}}} onClick={()=>setShowQRModal(true)}>
             <div style={{position:"relative"}}>
-              <QRCode value={token||"DEMO"} size={72}/>
+              <QRCode value={profile?.id||"DEMO"} size={72}/>
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,background:"rgba(0,0,0,0)",pointerEvents:"none"}}>👆</div>
             </div>
             <div style={{flex:1}}>
               <div style={{fontSize:13,fontWeight:600}}>Tap for Full QR</div>
               <div style={{fontSize:11,color:"rgba(240,237,230,0.4)",marginTop:2,lineHeight:1.5}}>Large size for staff scanning. Zero errors, instant results.</div>
-              <div className="mono" style={{fontSize:9,color:"rgba(240,237,230,0.3)",marginTop:5}}>{token||"No card issued yet"}</div>
+              <div className="mono" style={{fontSize:9,color:"rgba(240,237,230,0.3)",marginTop:5}}>{profile?.id||"No card issued yet"}</div>
             </div>
           </div>
           
@@ -923,7 +806,7 @@ function ProfileDashboard(){
       )}
 
       {/* QR Modal */}
-      {showQRModal && <QRModal value={token||"DEMO"} onClose={()=>setShowQRModal(false)}/>}
+      {showQRModal && <QRModal value={profile?.id||"DEMO"} onClose={()=>setShowQRModal(false)}/>}
 
       {/* ── TAB: CUSTOMIZE ── */}
       {tab==="customize"&&(
