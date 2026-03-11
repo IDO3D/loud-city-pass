@@ -358,8 +358,6 @@ textarea.inp{resize:none;line-height:1.55}
 @keyframes glowGold{0%,100%{box-shadow:0 0 22px rgba(253,185,39,0.22)}50%{box-shadow:0 0 52px rgba(253,185,39,0.6),0 0 80px rgba(253,185,39,0.2)}}
 @keyframes rankShine{0%{background-position:200% center}100%{background-position:-200% center}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.45}}
-@keyframes scanLine{0%{top:0}50%{top:50%}100%{top:100%}}
-@keyframes pulse{0%{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(1.05)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes confetti{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(130px) rotate(540deg);opacity:0}}
 @keyframes cardFlip{from{transform:rotateY(80deg) scale(0.9);opacity:0}to{transform:rotateY(0) scale(1);opacity:1}}
@@ -978,147 +976,162 @@ function StaffTerminal(){
   const {state,dispatch} = useCtx();
   const [token,setToken] = useState("");
   const [info,setInfo] = useState(null);
-  const [redeemMode,setRedeemMode] = useState(false);
-  const [lastScannedTime,setLastScannedTime] = useState(0);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [scanning, setScanning] = useState(false);
-  const [qrDetected,setQrDetected] = useState(false);
 
   const back = useCallback(()=>dispatch({t:"GO",s:"mode_select"}),[dispatch]);
 
   const lookup = () => {
     if(!token.trim()){setInfo({error:"Please enter an ID or token"});return;}
-    try{
-      const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
-      if(!prof){setInfo({error:"Profile not found"});return;}
-      setInfo(prof);
-      setRedeemMode(false);
-    }catch(e){
-      setInfo({error:"Lookup failed"});
-    }
+    const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
+    if(!prof){setInfo({error:"Profile not found"});return;}
+    setInfo(prof);
   };
 
   const stamp = () => {
     if(!info||info.error) return;
-    try{
-      const avail = Object.keys(STATIONS).filter(id=>!info.stamps[id]);
-      if(!avail.length){dispatch({t:"TOAST",v:{msg:"All stamps collected! 🏆",color:C.gold}});return;}
-      const sid = avail[0];
-      const db = {...state.db,profiles:{...state.db.profiles}};
-      const newStamps = {...info.stamps,[sid]:now()};
-      db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
-      db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
-      dispatch({t:"DB",db});
-      setInfo({...info,stamps:newStamps});
-      dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
-    }catch(e){
-      dispatch({t:"TOAST",v:{msg:"Stamp error",color:C.fail}});
-    }
+    const avail = Object.keys(STATIONS).filter(id=>!info.stamps[id]);
+    if(!avail.length){dispatch({t:"TOAST",v:{msg:"All stamps collected! 🏆",color:C.gold}});return;}
+    const sid = avail[0];
+    const db = {...state.db,profiles:{...state.db.profiles}};
+    const newStamps = {...info.stamps,[sid]:now()};
+    db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
+    db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
+    dispatch({t:"DB",db});
+    setInfo({...info,stamps:newStamps});
+    dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
   };
 
   const redeem = () => {
     if(!info||info.error) return;
-    try{
-      if(info.redeemed){dispatch({t:"TOAST",v:{msg:"Already redeemed",color:C.fail}});return;}
-      const db = {...state.db,profiles:{...state.db.profiles}};
-      db.profiles[info.id] = {...db.profiles[info.id],redeemed:true};
-      db.metrics = {...db.metrics,redeems:(db.metrics.redeems||0)+1};
-      dispatch({t:"DB",db});
-      setInfo({...info,redeemed:true});
-      setRedeemMode(false);
-      dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
-    }catch(e){
-      dispatch({t:"TOAST",v:{msg:"Redeem error",color:C.fail}});
-    }
+    if(info.redeemed){dispatch({t:"TOAST",v:{msg:"Already redeemed",color:C.fail}});return;}
+    const db = {...state.db,profiles:{...state.db.profiles}};
+    db.profiles[info.id] = {...db.profiles[info.id],redeemed:true};
+    db.metrics = {...db.metrics,redeems:(db.metrics.redeems||0)+1};
+    dispatch({t:"DB",db});
+    setInfo({...info,redeemed:true});
+    dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
   };
 
-  // camera-based QR scanning with live preview
+  // camera-based QR scanning
   useEffect(()=>{
     let stream;
     let idx;
     if(scanning){
       const start = async () => {
         try{
-          stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
-          if(videoRef.current){
-            videoRef.current.srcObject = stream;
-            videoRef.current.onloadedmetadata = () => videoRef.current.play().catch(e=>console.warn(e));
-          }
+          stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
           idx = setInterval(()=>{
-            if(videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA){
+            if(videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA){
               const canvas = canvasRef.current;
               const ctx = canvas.getContext('2d');
               canvas.width = videoRef.current.videoWidth;
               canvas.height = videoRef.current.videoHeight;
               ctx.drawImage(videoRef.current,0,0,canvas.width,canvas.height);
               const img = ctx.getImageData(0,0,canvas.width,canvas.height);
-              if(window.jsQR){
-                const qr = window.jsQR(img.data,img.width,img.height);
-                if(qr && now() - lastScannedTime > 2000){
-                  setQrDetected(true);
-                  setToken(qr.data);
-                  setLastScannedTime(now());
-                  setTimeout(()=>setQrDetected(false),600);
-                  setTimeout(()=>lookup(),300);
-                  setTimeout(()=>setScanning(false),800);
-                }
+              const qr = window.jsQR ? window.jsQR(img.data,img.width,img.height) : null;
+              if(qr){
+                setToken(qr.data);
+                lookup();
+                setScanning(false);
               }
             }
-          },200);
-        }catch(e){
-          dispatch({t:"TOAST",v:{msg:"📷 Camera access denied",color:C.warn}});
-          setScanning(false);
-        }      
+          },500);
+        }catch(e){dispatch({t:"TOAST",v:{msg:"Camera error",color:C.fail}});setScanning(false);}      
       };
       start();
     }
     return ()=>{
       if(idx) clearInterval(idx);
-      if(stream) stream.getTracks().forEach(t=>t.stop());
+      if(stream){stream.getTracks().forEach(t=>t.stop());}
     };
-  },[scanning,lastScannedTime]);
+  },[scanning]);
 
-  // NFC scanning
+  // NFC scanning stub
   const scanNFC = async () => {
-    if(!('NDEFReader' in window)){
-      dispatch({t:"TOAST",v:{msg:"📱 NFC not supported on this device",color:C.warn}});
-      return;
-    }
-    try{
-      const ndef = new NDEFReader();
-      await ndef.scan();
-      ndef.onreading = evt=>{
-        try{
-          const decoder = new TextDecoder();
-          const text = decoder.decode(evt.message.records[0].data);
-          setToken(text);
-          lookup();
-          dispatch({t:"TOAST",v:{msg:"✓ NFC read successful",color:C.ok}});
-        }catch(e){
-          dispatch({t:"TOAST",v:{msg:"NFC read error",color:C.fail}});
-        }        
-      };
-      ndef.onreadingerror = () => {
-        dispatch({t:"TOAST",v:{msg:"NFC scan aborted",color:C.warn}});
-      };
-    }catch(err){
-      dispatch({t:"TOAST",v:{msg:"📱 NFC permission denied",color:C.warn}});
+    if('NDEFReader' in window){
+      try{
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        ndef.onreading = evt=>{
+          try{
+            const decoder = new TextDecoder();
+            const text = decoder.decode(evt.message.records[0].data);
+            setToken(text);
+            lookup();
+          }catch(e){console.warn(e);}        
+        };
+      }catch(err){dispatch({t:"TOAST",v:{msg:"NFC permission denied",color:C.warn}});}
+    } else {
+      dispatch({t:"TOAST",v:{msg:"NFC not supported",color:C.warn}});
     }
   };
 
-  const stampCount = info ? Object.keys(info.stamps||{}).length : 0;
-
   return(
-    <div className="page" style={{paddingBottom:120}}>
-      {/* Header */}
+    <div className="page" style={{paddingBottom:108}}>
       <div className="tnav">
         <div className="row g10">
-          <button className="btn btn-ic" onClick={back} style={{opacity:0.6}}>←</button>
-          <div><div className="wm">Staff Terminal</div><div style={{fontSize:9,color:"rgba(240,237,230,0.38)",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1.5,textTransform:"uppercase"}}>Fan Scanner & Rewards</div></div>
+          <button className="btn btn-ic" onClick={back}>←</button>
+          <div><div className="wm">Staff Terminal</div><div style={{fontSize:9,color:"rgba(240,237,230,0.38)",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1.5,textTransform:"uppercase"}}>Loud City HQ</div></div>
         </div>
-        <button className="btn btn-sm" style={{background:redeemMode?"rgba(239,59,35,0.3) 1px solid rgba(239,59,35,0.6)":"transparent",color:redeemMode?C.orange:"rgba(240,237,230,0.5)",border:"1px solid "+(redeemMode?"rgba(239,59,35,0.6)":"rgba(255,255,255,0.1)")}} onClick={()=>setRedeemMode(!redeemMode)}>\n          {redeemMode?\"🏆 Redeem\":\"Redeem Mode\"}\n        </button>\n      </div>\n\n      {/* Scanner Section */}\n      <div className="col g10 w100 au\" style={{marginTop:24,borderRadius:20,overflow:\"hidden\",background:\"rgba(0,29,58,0.8)\",border:\"1px solid rgba(0,122,193,0.3)\",padding:16}}>\n        <div className=\"lbl\" style={{padding:\"0 4px\"}}>Live Scan</div>\n        \n        {/* Camera Preview */}\n        {scanning ? (\n          <div style={{position:\"relative\",width:\"100%\",aspectRatio:\"16/9\",borderRadius:14,overflow:\"hidden\",background:\"#000\",border:\"2px solid \"+C.blue}}>\n            <video ref={videoRef} style={{width:\"100%\",height:\"100%\",objectFit:\"cover\",display:\"block\"}} autoPlay playsInline />\n            {/* Scanning frame */}\n            <div style={{position:\"absolute\",inset:0,background:\"radial-gradient(ellipse at center, transparent 30%, rgba(0,122,193,0.4) 100%)\",pointerEvents:\"none\"}} />\n            {/* Corner brackets */}\n            <div style={{position:\"absolute\",top:12,left:12,width:32,height:32,border:\"2px solid \"+C.gold,borderRight:\"none\",borderBottom:\"none\",borderRadius:4}} />\n            <div style={{position:\"absolute\",top:12,right:12,width:32,height:32,border:\"2px solid \"+C.gold,borderLeft:\"none\",borderBottom:\"none\",borderRadius:4}} />\n            <div style={{position:\"absolute\",bottom:12,left:12,width:32,height:32,border:\"2px solid \"+C.gold,borderRight:\"none\",borderTop:\"none\",borderRadius:4}} />\n            <div style={{position:\"absolute\",bottom:12,right:12,width:32,height:32,border:\"2px solid \"+C.gold,borderLeft:\"none\",borderTop:\"none\",borderRadius:4}} />\n            {/* Scanning line */}\n            <div style={{position:\"absolute\",top:\"50%\",left:0,right:0,height:2,background:\"linear-gradient(90deg,transparent,\"+C.scan+\",transparent)\",animation:\"scanLine 2s ease-in-out infinite\"}} />\n            {/* QR detected indicator */}\n            {qrDetected && <div style={{position:\"absolute\",inset:0,background:\"rgba(34,212,106,0.2)\",animation:\"pulse 0.6s ease-out\"}} />}\n            {/* Scanning text */}\n            <div style={{position:\"absolute\",bottom:14,left:14,right:14,textAlign:\"center\",fontSize:12,color:C.cream,background:\"rgba(4,11,23,0.8)\",padding:\"8px 12px\",borderRadius:8,fontWeight:600}}>Hold card steady • Scanning…</div>\n          </div>\n        ) : (\n          <div style={{width:\"100%\",aspectRatio:\"16/9\",borderRadius:14,background:\"rgba(255,255,255,0.03)\",border:\"1px dashed rgba(0,122,193,0.3)\",display:\"flex\",alignItems:\"center\",justifyContent:\"center\",flexDirection:\"column\",gap:8}}>\n            <span style={{fontSize:32}}>📱</span>\n            <div style={{fontSize:12,color:\"rgba(240,237,230,0.4)\",textAlign:\"center\"}}>Press below to start scanning</div>\n          </div>\n        )}\n        <canvas ref={canvasRef} style={{display:\"none\"}} />\n\n        {/* Scanner Buttons */}\n        <div className=\"row g8\">\n          <button className={\"btn btn-full \"+(!scanning?\"btn-bl\":\"btn-or\")} onClick={()=>setScanning(v=>!v)} style={{fontWeight:700,fontSize:14}}>\n            {scanning?(<><span style={{fontSize:16}}>⏹</span>Stop</>):(<><span style={{fontSize:18}}>📷</span>Scan QR</>)}\n          </button>\n          <button className=\"btn btn-full\" style={{background:\"rgba(0,122,193,0.15)\",border:\"1.5px solid rgba(0,122,193,0.4)\",color:C.blueHi,fontWeight:700,fontSize:14}} onClick={scanNFC}>\n            <span style={{fontSize:18}}>📡</span>Tap NFC\n          </button>\n        </div>\n      </div>\n\n      {/* Manual Input */}\n      <div className=\"col g10 w100\" style={{marginTop:16}}>\n        <div className=\"lbl\">Or Enter ID</div>\n        <div className=\"row g8\">\n          <input className=\"inp\" value={token} onChange={e=>setToken(e.target.value.trim())} onKeyDown={e=>e.key===\"Enter\"&&lookup()} placeholder=\"Fan ID or token\" style={{flex:1}} />\n          <button className=\"btn btn-bl btn-sm\" onClick={lookup}>Go</button>\n        </div>\n      </div>\n\n      {/* Profile Card */}\n      {info && !info.error && (\n        <div className=\"col g12 w100 au\" style={{marginTop:20,borderRadius:18,background:\"linear-gradient(135deg,rgba(0,122,193,0.15),rgba(253,185,39,0.08))\",border:\"1.5px solid rgba(253,185,39,0.35)\",padding:16,animation:\"fadeUp 0.4s ease-out\"}}>\n          <div className=\"row g12\" style={{alignItems:\"center\"}}>\n            <div style={{width:52,height:52,borderRadius:13,background:\"linear-gradient(135deg,\"+C.navy+\",\"+C.blue+\")\",display:\"flex\",alignItems:\"center\",justifyContent:\"center\",fontSize:28,flexShrink:0}}>\n              {info.prefs?.avatar||\"🏀\"}\n            </div>\n            <div style={{flex:1}}>\n              <div style={{fontSize:15,fontWeight:700,color:C.cream}}>{info.name||\"Unknown\"}</div>\n              <div style={{fontSize:11,color:\"rgba(240,237,230,0.5)\",marginTop:1}}>ID: {info.id.slice(0,8)}…</div>\n            </div>\n            <div style={{textAlign:\"right\"}}>\n              <div style={{fontSize:24,fontWeight:900,color:stampCount===TOTAL?C.gold:C.cream}}>{stampCount}</div>\n              <div style={{fontSize:9,color:\"rgba(240,237,230,0.4)\",letterSpacing:0.5,textTransform:\"uppercase\"}}>/{TOTAL}</div>\n            </div>\n          </div>\n          \n          {/* Progress bar */}\n          <div style={{width:\"100%\",height:4,background:\"rgba(255,255,255,0.1)\",borderRadius:20,overflow:\"hidden\"}}>\n            <div style={{height:\"100%\",background:\"linear-gradient(90deg,\"+C.blue+\",\"+C.gold+\")\",width:(stampCount/TOTAL)*100+\"%\",transition:\"width 0.6s cubic-bezier(0.34,1.56,0.64,1)\"}} />\n          </div>\n\n          {/* Status row */}\n          <div className=\"row g12\" style={{fontSize:12}}>\n            <div className=\"row g4\" style={{flex:1}}>\n              <span style={{fontSize:14}}>🎴</span>\n              <div><strong>Redeemed:</strong> {info.redeemed?\"Yes\":\"No\"}</div>\n            </div>\n            <div className=\"row g4\" style={{flex:1}}>\n              <span style={{fontSize:14}}>⚡</span>\n              <div><strong>Active:</strong> Now</div>\n            </div>\n          </div>\n\n          {/* Action Buttons */}\n          <div className=\"row g10\" style={{marginTop:6}}>\n            {!redeemMode ? (\n              <>\n                <button className=\"btn btn-gd btn-full\" onClick={stamp} disabled={stampCount>=TOTAL} style={{fontWeight:700}}>\n                  <span style={{fontSize:16}}>⚡</span>Add Stamp\n                </button>\n                <button className=\"btn btn-full\" style={{background:\"rgba(34,212,106,0.2)\",border:\"1.5px solid rgba(34,212,106,0.4)\",color:C.ok,fontWeight:700}} onClick={()=>setRedeemMode(true)} disabled={info.redeemed}>\n                  <span style={{fontSize:16}}>🏆</span>\n                </button>\n              </>\n            ) : (\n              <>\n                <button className=\"btn btn-or btn-full\" onClick={redeem} disabled={info.redeemed} style={{fontWeight:700,fontSize:15}}>\n                  🏆 REDEEM PRIZE\n                </button>\n                <button className=\"btn btn-full\" style={{background:\"rgba(255,255,255,0.08)\",border:\"1.5px solid rgba(255,255,255,0.15)\",color:\"rgba(240,237,230,0.6)\",fontWeight:700}} onClick={()=>setRedeemMode(false)}>\n                  ← Cancel\n                </button>\n              </>\n            )}\n          </div>\n        </div>\n      )}\n\n      {/* Error state */}\n      {info?.error && (\n        <div className=\"col g10 w100 au\" style={{marginTop:20,borderRadius:16,background:\"rgba(229,62,62,0.12)\",border:\"1.5px solid rgba(229,62,62,0.4)\",padding:14,animation:\"fadeUp 0.3s ease-out\"}}>\n          <div className=\"row g8\">\n            <span style={{fontSize:20}}>⚠️</span>\n            <div><div style={{fontWeight:700,color:C.cream}}>Not Found</div><div style={{fontSize:11,color:\"rgba(240,237,230,0.5)\",marginTop:2}}>{info.error}</div></div>\n          </div>\n        </div>\n      )}\n\n      {/* Live Dashboard */}\n      {!info && (\n        <div className=\"col g16 w100\" style={{marginTop:30}}>\n          {/* Metrics grid */}\n          <div className=\"row g10\">\n            <div style={{flex:1,borderRadius:14,background:\"rgba(0,122,193,0.1)\",border:\"1px solid rgba(0,122,193,0.3)\",padding:12,textAlign:\"center\"}}>\n              <div style={{fontSize:10,color:\"rgba(240,237,230,0.4)\",textTransform:\"uppercase\",letterSpacing:1,fontWeight:700}}>Active</div>\n              <div style={{fontSize:22,fontWeight:900,color:C.blue,marginTop:4}}>{state.db.metrics.regs||0}</div>\n            </div>\n            <div style={{flex:1,borderRadius:14,background:\"rgba(253,185,39,0.1)\",border:\"1px solid rgba(253,185,39,0.3)\",padding:12,textAlign:\"center\"}}>\n              <div style={{fontSize:10,color:\"rgba(240,237,230,0.4)\",textTransform:\"uppercase\",letterSpacing:1,fontWeight:700}}>Stamps</div>\n              <div style={{fontSize:22,fontWeight:900,color:C.gold,marginTop:4}}>{state.db.metrics.stamps||0}</div>\n            </div>\n            <div style={{flex:1,borderRadius:14,background:\"rgba(34,212,106,0.1)\",border:\"1px solid rgba(34,212,106,0.3)\",padding:12,textAlign:\"center\"}}>\n              <div style={{fontSize:10,color:\"rgba(240,237,230,0.4)\",textTransform:\"uppercase\",letterSpacing:1,fontWeight:700}}>Redeems</div>\n              <div style={{fontSize:22,fontWeight:900,color:C.ok,marginTop:4}}>{state.db.metrics.redeems||0}</div>\n            </div>\n          </div>\n\n          {/* Live feed */}\n          {state.db.liveEvents && state.db.liveEvents.length>0 && (\n            <div className=\"col g8 au\" style={{borderRadius:16,background:\"rgba(255,255,255,0.02)\",border:\"1px solid rgba(255,255,255,0.06)\",padding:14}}>\n              <div className=\"lbl\">Live Activity</div>\n              {state.db.liveEvents.slice(0,4).map((evt,i)=>(\n                <div key={evt.id} className=\"row g10\" style={{fontSize:12,padding:\"10px 0\",borderTop:i>0?\"1px solid rgba(255,255,255,0.06)\":\"none\",animation:\"fadeUp 0.4s ease-out\"}}>\n                  <span style={{fontSize:18}}>{evt.type===\"redeem\"?\"🏆\":\"⚡\"}</span>\n                  <div style={{flex:1}}>\n                    <div style={{fontWeight:600}}>{evt.name}</div>\n                    <div style={{fontSize:10,color:\"rgba(240,237,230,0.35)\",marginTop:1}}>{evt.stationName||\"Trophy claimed\"}</div>\n                  </div>\n                  <div style={{fontSize:9,color:\"rgba(240,237,230,0.3)\"}}>{new Date(evt.ts).toLocaleTimeString([],{hour:\"2-digit\",minute:\"2-digit\"})}</div>\n                </div>\n              ))}\n            </div>\n          )}\n        </div>\n      )}\n    </div>\n  );
+      </div>
+      <div className="col g14 w100" style={{marginTop:20}}>
+        <div className="lbl">Scanner / Lookup</div>
+        <input className="inp" value={token} onChange={e=>setToken(e.target.value)} placeholder="Fan ID or token"/>
+        <div className="row g10" style={{marginTop:10}}>
+          <button className="btn btn-bl" onClick={lookup}>Lookup</button>
+          <button className="btn btn-gd" onClick={stamp} disabled={!info||info.error}>Stamp</button>
+          <button className="btn btn-or" onClick={redeem} disabled={!info||info.error}>Redeem</button>
+        </div>
+        <div className="row g10" style={{marginTop:10}}>
+          <button className="btn btn-bl btn-sm" onClick={()=>setScanning(v=>!v)}>
+            {scanning?"Stop QR":"Scan QR"}
+          </button>
+          <button className="btn btn-bl btn-sm" onClick={scanNFC}>Scan NFC</button>
+        </div>
+        <div style={{position:'relative',width:0,height:0,overflow:'hidden'}}>
+          <video ref={videoRef} style={{width:'100%',height:'auto'}} />
+          <canvas ref={canvasRef} />
+        </div>
+        {info&&(
+          info.error?
+            <div className="alr alr-e" style={{marginTop:16}}>{info.error}</div>
+          :
+            <div style={{marginTop:20,fontSize:13}}>
+              <div><strong>Name:</strong> {info.name}</div>
+              <div><strong>Stamps:</strong> {Object.keys(info.stamps||{}).length}/{TOTAL}</div>
+              <div><strong>Redeemed:</strong> {info.redeemed?"Yes":"No"}</div>
+            </div>
+        )}
+        <div style={{marginTop:40}}>
+          <div className="lbl">Metrics</div>
+          <div style={{fontSize:13,marginTop:6}}>Registrations: {state.db.metrics.regs||0}</div>
+          <div style={{fontSize:13}}>Cards issued: {state.db.metrics.cards||0}</div>
+          <div style={{fontSize:13}}>Stamps: {state.db.metrics.stamps||0}</div>
+          <div style={{fontSize:13}}>Redeems: {state.db.metrics.redeems||0}</div>
+          <div style={{fontSize:13,marginTop:6}}>By station:</div>
+          <div style={{fontSize:12}}>{Object.entries(state.db.metrics.byStation||{}).map(([sid,ct])=>
+            <div key={sid}>{STATIONS[sid].name}: {ct}</div>
+          )}</div>
+        </div>
+        {state.db.liveEvents && state.db.liveEvents.length>0 && (
+          <div style={{marginTop:30}}>
+            <div className="lbl">Live Events</div>
+            {state.db.liveEvents.slice(0,5).map(evt=>(
+              <div key={evt.id} className="row g8" style={{fontSize:12,marginTop:4}}>
+                <span>{evt.type==="redeem"?"🏆":"⚡"}</span>
+                <span>{evt.name}{evt.sid?` – ${STATIONS[evt.sid].name}`:""} {evt.done?"(done)":""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════ MODE SELECT ═══════════════
