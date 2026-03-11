@@ -976,160 +976,236 @@ function StaffTerminal(){
   const {state,dispatch} = useCtx();
   const [token,setToken] = useState("");
   const [info,setInfo] = useState(null);
-
+  const [redeemMode,setRedeemMode] = useState(false);
+  const [lastScannedTime,setLastScannedTime] = useState(0);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [scanning, setScanning] = useState(false);
+  const [qrDetected,setQrDetected] = useState(false);
 
   const back = useCallback(()=>dispatch({t:"GO",s:"mode_select"}),[dispatch]);
 
   const lookup = () => {
     if(!token.trim()){setInfo({error:"Please enter an ID or token"});return;}
-    const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
-    if(!prof){setInfo({error:"Profile not found"});return;}
-    setInfo(prof);
+    try{
+      const prof = Object.values(state.db.profiles).find(p=>p.id===token.trim()||p.token===token.trim());
+      if(!prof){setInfo({error:"Profile not found"});return;}
+      setInfo(prof);
+      setRedeemMode(false);
+    }catch(e){
+      setInfo({error:"Lookup failed"});
+    }
   };
 
   const stamp = () => {
     if(!info||info.error) return;
-    const avail = Object.keys(STATIONS).filter(id=>!info.stamps[id]);
-    if(!avail.length){dispatch({t:"TOAST",v:{msg:"All stamps collected! 🏆",color:C.gold}});return;}
-    const sid = avail[0];
-    const db = {...state.db,profiles:{...state.db.profiles}};
-    const newStamps = {...info.stamps,[sid]:now()};
-    db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
-    db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
-    dispatch({t:"DB",db});
-    setInfo({...info,stamps:newStamps});
-    dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
+    try{
+      const avail = Object.keys(STATIONS).filter(id=>!info.stamps[id]);
+      if(!avail.length){dispatch({t:"TOAST",v:{msg:"All stamps collected! 🏆",color:C.gold}});return;}
+      const sid = avail[0];
+      const db = {...state.db,profiles:{...state.db.profiles}};
+      const newStamps = {...info.stamps,[sid]:now()};
+      db.profiles[info.id] = {...db.profiles[info.id],stamps:newStamps};
+      db.metrics = {...db.metrics,stamps:(db.metrics.stamps||0)+1,byStation:{...db.metrics.byStation,[sid]:(db.metrics.byStation[sid]||0)+1}};
+      dispatch({t:"DB",db});
+      setInfo({...info,stamps:newStamps});
+      dispatch({t:"TOAST",v:{msg:`⚡ ${STATIONS[sid].full} — Stamped!`,color:C.ok}});
+    }catch(e){
+      dispatch({t:"TOAST",v:{msg:"Stamp error",color:C.fail}});
+    }
   };
 
   const redeem = () => {
     if(!info||info.error) return;
-    if(info.redeemed){dispatch({t:"TOAST",v:{msg:"Already redeemed",color:C.fail}});return;}
-    const db = {...state.db,profiles:{...state.db.profiles}};
-    db.profiles[info.id] = {...db.profiles[info.id],redeemed:true};
-    db.metrics = {...db.metrics,redeems:(db.metrics.redeems||0)+1};
-    dispatch({t:"DB",db});
-    setInfo({...info,redeemed:true});
-    dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
+    try{
+      if(info.redeemed){dispatch({t:"TOAST",v:{msg:"Already redeemed",color:C.fail}});return;}
+      const db = {...state.db,profiles:{...state.db.profiles}};
+      db.profiles[info.id] = {...db.profiles[info.id],redeemed:true};
+      db.metrics = {...db.metrics,redeems:(db.metrics.redeems||0)+1};
+      dispatch({t:"DB",db});
+      setInfo({...info,redeemed:true});
+      setRedeemMode(false);
+      dispatch({t:"TOAST",v:{msg:"🏆 Redeemed!",color:C.ok}});
+    }catch(e){
+      dispatch({t:"TOAST",v:{msg:"Redeem error",color:C.fail}});
+    }
   };
 
-  // camera-based QR scanning
   useEffect(()=>{
     let stream;
     let idx;
     if(scanning){
       const start = async () => {
         try{
-          stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}}});
+          if(videoRef.current){
+            videoRef.current.srcObject = stream;
+            videoRef.current.onloadedmetadata = () => videoRef.current.play().catch(e=>console.warn(e));
+          }
           idx = setInterval(()=>{
-            if(videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA){
+            if(videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA){
               const canvas = canvasRef.current;
-              const ctx = canvas.getContext('2d');
+              const ctx = canvas.getContext("2d");
               canvas.width = videoRef.current.videoWidth;
               canvas.height = videoRef.current.videoHeight;
               ctx.drawImage(videoRef.current,0,0,canvas.width,canvas.height);
               const img = ctx.getImageData(0,0,canvas.width,canvas.height);
-              const qr = window.jsQR ? window.jsQR(img.data,img.width,img.height) : null;
-              if(qr){
-                setToken(qr.data);
-                lookup();
-                setScanning(false);
+              if(window.jsQR){
+                const qr = window.jsQR(img.data,img.width,img.height);
+                if(qr && now() - lastScannedTime > 2000){
+                  setQrDetected(true);
+                  setToken(qr.data);
+                  setLastScannedTime(now());
+                  setTimeout(()=>setQrDetected(false),600);
+                  setTimeout(()=>lookup(),300);
+                  setTimeout(()=>setScanning(false),800);
+                }
               }
             }
-          },500);
-        }catch(e){dispatch({t:"TOAST",v:{msg:"Camera error",color:C.fail}});setScanning(false);}      
+          },200);
+        }catch(e){
+          dispatch({t:"TOAST",v:{msg:"Camera access denied",color:C.warn}});
+          setScanning(false);
+        }      
       };
       start();
     }
     return ()=>{
       if(idx) clearInterval(idx);
-      if(stream){stream.getTracks().forEach(t=>t.stop());}
+      if(stream) stream.getTracks().forEach(t=>t.stop());
     };
-  },[scanning]);
+  },[scanning,lastScannedTime]);
 
-  // NFC scanning stub
   const scanNFC = async () => {
-    if('NDEFReader' in window){
-      try{
-        const ndef = new NDEFReader();
-        await ndef.scan();
-        ndef.onreading = evt=>{
-          try{
-            const decoder = new TextDecoder();
-            const text = decoder.decode(evt.message.records[0].data);
-            setToken(text);
-            lookup();
-          }catch(e){console.warn(e);}        
-        };
-      }catch(err){dispatch({t:"TOAST",v:{msg:"NFC permission denied",color:C.warn}});}
-    } else {
+    if(!("NDEFReader" in window)){
       dispatch({t:"TOAST",v:{msg:"NFC not supported",color:C.warn}});
+      return;
+    }
+    try{
+      const ndef = new NDEFReader();
+      await ndef.scan();
+      ndef.onreading = evt=>{
+        try{
+          const decoder = new TextDecoder();
+          const text = decoder.decode(evt.message.records[0].data);
+          setToken(text);
+          lookup();
+          dispatch({t:"TOAST",v:{msg:"✓ NFC read",color:C.ok}});
+        }catch(e){
+          dispatch({t:"TOAST",v:{msg:"NFC error",color:C.fail}});
+        }        
+      };
+    }catch(err){
+      dispatch({t:"TOAST",v:{msg:"NFC denied",color:C.warn}});
     }
   };
 
+  const stampCount = info ? Object.keys(info.stamps||{}).length : 0;
+
   return(
-    <div className="page" style={{paddingBottom:108}}>
+    <div className="page" style={{paddingBottom:120}}>
       <div className="tnav">
         <div className="row g10">
-          <button className="btn btn-ic" onClick={back}>←</button>
-          <div><div className="wm">Staff Terminal</div><div style={{fontSize:9,color:"rgba(240,237,230,0.38)",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1.5,textTransform:"uppercase"}}>Loud City HQ</div></div>
+          <button className="btn btn-ic" onClick={back} style={{opacity:0.6}}>←</button>
+          <div><div className="wm">Staff Terminal</div><div style={{fontSize:9,color:"rgba(240,237,230,0.38)",fontFamily:"Barlow Condensed,sans-serif",letterSpacing:1.5,textTransform:"uppercase"}}>Fan Scanner</div></div>
         </div>
+        <button className="btn btn-sm" style={{background:redeemMode?"rgba(239,59,35,0.3)":"transparent",color:redeemMode?C.orange:"rgba(240,237,230,0.5)",border:"1px solid "+(redeemMode?"rgba(239,59,35,0.6)":"rgba(255,255,255,0.1)")}} onClick={()=>setRedeemMode(!redeemMode)}>
+          {redeemMode?"🏆":"Redeem"}
+        </button>
       </div>
-      <div className="col g14 w100" style={{marginTop:20}}>
-        <div className="lbl">Scanner / Lookup</div>
-        <input className="inp" value={token} onChange={e=>setToken(e.target.value)} placeholder="Fan ID or token"/>
-        <div className="row g10" style={{marginTop:10}}>
-          <button className="btn btn-bl" onClick={lookup}>Lookup</button>
-          <button className="btn btn-gd" onClick={stamp} disabled={!info||info.error}>Stamp</button>
-          <button className="btn btn-or" onClick={redeem} disabled={!info||info.error}>Redeem</button>
-        </div>
-        <div className="row g10" style={{marginTop:10}}>
-          <button className="btn btn-bl btn-sm" onClick={()=>setScanning(v=>!v)}>
-            {scanning?"Stop QR":"Scan QR"}
-          </button>
-          <button className="btn btn-bl btn-sm" onClick={scanNFC}>Scan NFC</button>
-        </div>
-        <div style={{position:'relative',width:0,height:0,overflow:'hidden'}}>
-          <video ref={videoRef} style={{width:'100%',height:'auto'}} />
-          <canvas ref={canvasRef} />
-        </div>
-        {info&&(
-          info.error?
-            <div className="alr alr-e" style={{marginTop:16}}>{info.error}</div>
-          :
-            <div style={{marginTop:20,fontSize:13}}>
-              <div><strong>Name:</strong> {info.name}</div>
-              <div><strong>Stamps:</strong> {Object.keys(info.stamps||{}).length}/{TOTAL}</div>
-              <div><strong>Redeemed:</strong> {info.redeemed?"Yes":"No"}</div>
-            </div>
-        )}
-        <div style={{marginTop:40}}>
-          <div className="lbl">Metrics</div>
-          <div style={{fontSize:13,marginTop:6}}>Registrations: {state.db.metrics.regs||0}</div>
-          <div style={{fontSize:13}}>Cards issued: {state.db.metrics.cards||0}</div>
-          <div style={{fontSize:13}}>Stamps: {state.db.metrics.stamps||0}</div>
-          <div style={{fontSize:13}}>Redeems: {state.db.metrics.redeems||0}</div>
-          <div style={{fontSize:13,marginTop:6}}>By station:</div>
-          <div style={{fontSize:12}}>{Object.entries(state.db.metrics.byStation||{}).map(([sid,ct])=>
-            <div key={sid}>{STATIONS[sid].name}: {ct}</div>
-          )}</div>
-        </div>
-        {state.db.liveEvents && state.db.liveEvents.length>0 && (
-          <div style={{marginTop:30}}>
-            <div className="lbl">Live Events</div>
-            {state.db.liveEvents.slice(0,5).map(evt=>(
-              <div key={evt.id} className="row g8" style={{fontSize:12,marginTop:4}}>
-                <span>{evt.type==="redeem"?"🏆":"⚡"}</span>
-                <span>{evt.name}{evt.sid?` – ${STATIONS[evt.sid].name}`:""} {evt.done?"(done)":""}</span>
-              </div>
-            ))}
+
+      <div className="col g10 w100 au" style={{marginTop:24,borderRadius:20,overflow:"hidden",background:"rgba(0,29,58,0.8)",border:"1px solid rgba(0,122,193,0.3)",padding:16}}>
+        <div className="lbl" style={{padding:"0 4px"}}>QR Scanner</div>
+        {scanning ? (
+          <div style={{position:"relative",width:"100%",aspectRatio:"16/9",borderRadius:14,overflow:"hidden",background:"#000",border:"2px solid "+C.blue}}>
+            <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} autoPlay playsInline />
+            <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at center, transparent 30%, rgba(0,122,193,0.4) 100%)",pointerEvents:"none"}} />
+            <div style={{position:"absolute",top:"50%",left:0,right:0,height:2,background:"linear-gradient(90deg,transparent,"+C.scan+",transparent)",animation:"scanLine 2s infinite"}} />
+            {qrDetected && <div style={{position:"absolute",inset:0,background:"rgba(34,212,106,0.2)",animation:"pulse 0.6s ease-out"}} />}
+          </div>
+        ) : (
+          <div style={{width:"100%",aspectRatio:"16/9",borderRadius:14,background:"rgba(255,255,255,0.03)",border:"1px dashed rgba(0,122,193,0.3)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+            <span style={{fontSize:32}}>📱</span>
+            <div style={{fontSize:12,color:"rgba(240,237,230,0.4)"}}>Ready to scan</div>
           </div>
         )}
+        <canvas ref={canvasRef} style={{display:"none"}} />
+        <div className="row g8">
+          <button className={"btn btn-full "+(!scanning?"btn-bl":"btn-or")} onClick={()=>setScanning(v=>!v)} style={{fontWeight:700}}>
+            {scanning?"Stop":"📷 Scan"}
+          </button>
+          <button className="btn btn-full" style={{background:"rgba(0,122,193,0.15)",border:"1.5px solid rgba(0,122,193,0.4)",color:C.blueHi,fontWeight:700}} onClick={scanNFC}>
+            📡 NFC
+          </button>
+        </div>
       </div>
+
+      <div className="col g10 w100" style={{marginTop:16}}>
+        <div className="lbl">Manual Input</div>
+        <div className="row g8">
+          <input className="inp" value={token} onChange={e=>setToken(e.target.value.trim())} onKeyDown={e=>e.key==="Enter"&&lookup()} placeholder="Fan ID" style={{flex:1}} />
+          <button className="btn btn-bl btn-sm" onClick={lookup}>Go</button>
+        </div>
+      </div>
+
+      {info && !info.error && (
+        <div className="col g12 w100 au" style={{marginTop:20,borderRadius:18,background:"linear-gradient(135deg,rgba(0,122,193,0.15),rgba(253,185,39,0.08))",border:"1.5px solid rgba(253,185,39,0.35)",padding:16}}>
+          <div className="row g12" style={{alignItems:"center"}}>
+            <div style={{width:52,height:52,borderRadius:13,background:"linear-gradient(135deg,"+C.navy+","+C.blue+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
+              {info.prefs?.avatar||"🏀"}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.cream}}>{info.name}</div>
+              <div style={{fontSize:11,color:"rgba(240,237,230,0.5)"}}>ID: {info.id.slice(0,8)}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:24,fontWeight:900,color:stampCount===TOTAL?C.gold:C.cream}}>{stampCount}</div>
+              <div style={{fontSize:9,color:"rgba(240,237,230,0.4)"}}>{TOTAL}</div>
+            </div>
+          </div>
+          <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.1)",borderRadius:20,overflow:"hidden",marginTop:12}}>
+            <div style={{height:"100%",background:"linear-gradient(90deg,"+C.blue+","+C.gold+")",width:(stampCount/TOTAL)*100+"%",transition:"width 0.6s ease-out"}} />
+          </div>
+          <div className="row g10" style={{marginTop:10}}>
+            {!redeemMode ? (
+              <>
+                <button className="btn btn-gd btn-full" onClick={stamp} disabled={stampCount>=TOTAL}>⚡ Stamp</button>
+                <button className="btn btn-full" style={{background:"rgba(34,212,106,0.2)",border:"1px solid rgba(34,212,106,0.4)",color:C.ok}} onClick={()=>setRedeemMode(true)} disabled={info.redeemed}>🏆</button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-or btn-full" onClick={redeem} disabled={info.redeemed}>REDEEM</button>
+                <button className="btn btn-full" style={{background:"rgba(255,255,255,0.08)",color:"rgba(240,237,230,0.6)"}} onClick={()=>setRedeemMode(false)}>Cancel</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {info?.error && (
+        <div style={{marginTop:20,padding:14,borderRadius:16,background:"rgba(229,62,62,0.12)",border:"1px solid rgba(229,62,62,0.4)"}}>
+          <div style={{fontSize:12,color:C.cream}}>⚠️ {info.error}</div>
+        </div>
+      )}
+
+      {!info && (
+        <div style={{marginTop:30}}>
+          <div className="row g10" style={{marginBottom:16}}>
+            <div style={{flex:1,borderRadius:14,background:"rgba(0,122,193,0.1)",border:"1px solid rgba(0,122,193,0.3)",padding:12,textAlign:"center"}}>
+              <div style={{fontSize:10,color:"rgba(240,237,230,0.4)"}}>Active</div>
+              <div style={{fontSize:20,fontWeight:900,color:C.blue,marginTop:4}}>{state.db.metrics.regs||0}</div>
+            </div>
+            <div style={{flex:1,borderRadius:14,background:"rgba(253,185,39,0.1)",border:"1px solid rgba(253,185,39,0.3)",padding:12,textAlign:"center"}}>
+              <div style={{fontSize:10,color:"rgba(240,237,230,0.4)"}}>Stamps</div>
+              <div style={{fontSize:20,fontWeight:900,color:C.gold,marginTop:4}}>{state.db.metrics.stamps||0}</div>
+            </div>
+            <div style={{flex:1,borderRadius:14,background:"rgba(34,212,106,0.1)",border:"1px solid rgba(34,212,106,0.3)",padding:12,textAlign:"center"}}>
+              <div style={{fontSize:10,color:"rgba(240,237,230,0.4)"}}>Redeems</div>
+              <div style={{fontSize:20,fontWeight:900,color:C.ok,marginTop:4}}>{state.db.metrics.redeems||0}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
